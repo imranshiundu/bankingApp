@@ -5,30 +5,24 @@ import model.Fund;
 import model.User;
 
 import java.math.BigDecimal;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Scanner;
 
 public class BankingService {
     private final Scanner scanner;
-    private final Map<String, User> users;
+    private final BankingCore bankingCore;
     private User currentUser;
     private boolean running;
 
     public BankingService(Scanner scanner) {
-        this.scanner = scanner;
-        this.users = new HashMap<>();
-        this.running = true;
-        initializeUsers();
+        this(scanner, new BankingCore());
     }
 
-    private void initializeUsers() {
-        String[] userNames = {"Alice", "Imran", "Valarie", "Denzel"};
-        for (String name : userNames) {
-            users.put(name.toLowerCase(), new User(name));
-        }
+    public BankingService(Scanner scanner, BankingCore bankingCore) {
+        this.scanner = scanner;
+        this.bankingCore = bankingCore;
+        this.running = true;
     }
 
     public void start() {
@@ -47,6 +41,7 @@ public class BankingService {
         System.out.println(" BankingApp - Console Bank ");
         System.out.println("============================");
         System.out.println("Demo users: Alice, Imran, Valarie, Denzel");
+        System.out.println("Web mode: java WebBankingApp");
     }
 
     private void login() {
@@ -58,17 +53,13 @@ public class BankingService {
             return;
         }
 
-        Optional<User> user = findUser(name);
+        Optional<User> user = bankingCore.findUser(name);
         if (user.isPresent()) {
             currentUser = user.get();
             System.out.println("Welcome, " + currentUser.getName() + "!");
         } else {
             System.out.println("User not found. Try one of the demo names listed above.");
         }
-    }
-
-    private Optional<User> findUser(String name) {
-        return Optional.ofNullable(users.get(name.toLowerCase()));
     }
 
     private void showMenu() {
@@ -126,11 +117,7 @@ public class BankingService {
     private void depositMoney() {
         try {
             BigDecimal amount = readPositiveAmount("Enter amount to deposit to savings account: $");
-            ensureSufficientFunds(currentUser.getCash(), amount, "Insufficient cash.");
-
-            currentUser.subtractCash(amount);
-            currentUser.getSavingsAccount().deposit(amount);
-            currentUser.addTransaction("Deposited $" + format(amount) + " from cash to savings");
+            bankingCore.depositSavings(currentUser, amount);
             System.out.println("Deposit successful.");
         } catch (InvalidAmountException e) {
             System.out.println(e.getMessage());
@@ -140,11 +127,7 @@ public class BankingService {
     private void withdrawMoney() {
         try {
             BigDecimal amount = readPositiveAmount("Enter amount to withdraw from savings account: $");
-            ensureSufficientFunds(currentUser.getSavingsAccount().getBalance(), amount, "Insufficient funds in savings account.");
-
-            currentUser.getSavingsAccount().withdraw(amount);
-            currentUser.addCash(amount);
-            currentUser.addTransaction("Withdrew $" + format(amount) + " from savings to cash");
+            bankingCore.withdrawSavings(currentUser, amount);
             System.out.println("Withdrawal successful.");
         } catch (InvalidAmountException e) {
             System.out.println(e.getMessage());
@@ -154,28 +137,22 @@ public class BankingService {
     private void sendMoney() {
         try {
             System.out.println("Available recipients:");
-            users.values().stream()
+            bankingCore.getUsers().stream()
                 .map(User::getName)
                 .filter(name -> !name.equalsIgnoreCase(currentUser.getName()))
-                .sorted()
                 .forEach(name -> System.out.println("- " + name));
 
             System.out.print("Enter recipient's name: ");
             String recipientName = scanner.nextLine().trim();
-            Optional<User> recipient = findUser(recipientName);
+            Optional<User> recipient = bankingCore.findUser(recipientName);
 
-            if (recipient.isEmpty() || recipient.get().getName().equalsIgnoreCase(currentUser.getName())) {
+            if (recipient.isEmpty()) {
                 System.out.println("Invalid recipient.");
                 return;
             }
 
             BigDecimal amount = readPositiveAmount("Enter amount to send from savings: $");
-            ensureSufficientFunds(currentUser.getSavingsAccount().getBalance(), amount, "Insufficient funds in savings account.");
-
-            currentUser.getSavingsAccount().withdraw(amount);
-            recipient.get().getSavingsAccount().deposit(amount);
-            currentUser.addTransaction("Sent $" + format(amount) + " to " + recipient.get().getName());
-            recipient.get().addTransaction("Received $" + format(amount) + " from " + currentUser.getName());
+            bankingCore.sendMoney(currentUser, recipient.get(), amount);
             System.out.printf("Successfully sent $%.2f to %s.%n", amount, recipient.get().getName());
         } catch (InvalidAmountException e) {
             System.out.println(e.getMessage());
@@ -185,11 +162,7 @@ public class BankingService {
     private void transferSavingsToInvestment() {
         try {
             BigDecimal amount = readPositiveAmount("Enter amount to move from savings to investment wallet: $");
-            ensureSufficientFunds(currentUser.getSavingsAccount().getBalance(), amount, "Insufficient funds in savings account.");
-
-            currentUser.getSavingsAccount().withdraw(amount);
-            currentUser.getInvestmentAccount().deposit(amount);
-            currentUser.addTransaction("Moved $" + format(amount) + " from savings to investment wallet");
+            bankingCore.transferSavingsToInvestment(currentUser, amount);
             System.out.println("Transfer successful.");
         } catch (InvalidAmountException e) {
             System.out.println(e.getMessage());
@@ -199,11 +172,7 @@ public class BankingService {
     private void transferInvestmentToSavings() {
         try {
             BigDecimal amount = readPositiveAmount("Enter amount to move from investment wallet to savings: $");
-            ensureSufficientFunds(currentUser.getInvestmentAccount().getBalance(), amount, "Insufficient funds in investment wallet.");
-
-            currentUser.getInvestmentAccount().withdraw(amount);
-            currentUser.getSavingsAccount().deposit(amount);
-            currentUser.addTransaction("Moved $" + format(amount) + " from investment wallet to savings");
+            bankingCore.transferInvestmentToSavings(currentUser, amount);
             System.out.println("Transfer successful.");
         } catch (InvalidAmountException e) {
             System.out.println(e.getMessage());
@@ -222,10 +191,7 @@ public class BankingService {
             System.out.print("Enter fund to invest in: ");
             Fund fund = Fund.fromInput(scanner.nextLine());
             BigDecimal amount = readPositiveAmount("Enter amount to invest from investment wallet: $");
-            ensureSufficientFunds(currentUser.getInvestmentAccount().getBalance(), amount, "Insufficient funds in investment wallet.");
-
-            currentUser.getInvestmentAccount().invest(fund, amount);
-            currentUser.addTransaction("Invested $" + format(amount) + " in " + fund.getDisplayName() + " fund");
+            bankingCore.investInFund(currentUser, fund, amount);
             System.out.printf("Successfully invested $%.2f in %s fund.%n", amount, fund.getDisplayName());
         } catch (IllegalArgumentException e) {
             System.out.println("Invalid fund selection.");
@@ -235,21 +201,18 @@ public class BankingService {
     }
 
     private void withdrawAllInvestments() {
-        BigDecimal withdrawn = currentUser.getInvestmentAccount().withdrawInvestments();
-        currentUser.addTransaction("Withdrew all fund investments ($" + format(withdrawn) + ") to investment wallet");
+        bankingCore.withdrawAllInvestments(currentUser);
         System.out.println("All fund investments have been withdrawn to your investment wallet.");
     }
 
     private void applyMonthlyGrowth() {
-        BigDecimal interest = currentUser.getSavingsAccount().applyInterest();
-        currentUser.getInvestmentAccount().applyFundGrowth();
-        currentUser.addTransaction("Applied monthly savings interest of $" + format(interest) + " and fund growth");
+        bankingCore.applyMonthlyGrowth(currentUser);
         System.out.println("Monthly interest and investment growth applied.");
     }
 
     private void showTransactionHistory() {
         System.out.println("\n--- Transaction History ---");
-        List<String> transactions = currentUser.getTransactions();
+        List<String> transactions = bankingCore.transactionHistory(currentUser);
         for (int index = transactions.size() - 1; index >= 0; index--) {
             System.out.println("- " + transactions.get(index));
         }
@@ -257,15 +220,7 @@ public class BankingService {
 
     private BigDecimal readPositiveAmount(String prompt) throws InvalidAmountException {
         System.out.print(prompt);
-        try {
-            BigDecimal amount = new BigDecimal(scanner.nextLine().trim());
-            if (amount.compareTo(BigDecimal.ZERO) <= 0) {
-                throw new InvalidAmountException("Amount must be positive.");
-            }
-            return amount;
-        } catch (NumberFormatException e) {
-            throw new InvalidAmountException("Invalid amount format. Please enter a valid number.");
-        }
+        return bankingCore.parseAmount(scanner.nextLine());
     }
 
     private int readInt() {
@@ -274,16 +229,6 @@ public class BankingService {
         } catch (NumberFormatException e) {
             return -1;
         }
-    }
-
-    private void ensureSufficientFunds(BigDecimal available, BigDecimal amount, String message) throws InvalidAmountException {
-        if (available.compareTo(amount) < 0) {
-            throw new InvalidAmountException(message);
-        }
-    }
-
-    private String format(BigDecimal amount) {
-        return String.format("%.2f", amount);
     }
 
     private void logout() {
