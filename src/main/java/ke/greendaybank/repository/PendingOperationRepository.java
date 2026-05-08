@@ -1,5 +1,8 @@
 package ke.greendaybank.repository;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import ke.greendaybank.approval.HighRiskMovementPayload;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -12,28 +15,24 @@ import java.util.UUID;
 @Repository
 public class PendingOperationRepository {
     private final JdbcTemplate jdbcTemplate;
+    private final ObjectMapper objectMapper;
 
-    public PendingOperationRepository(JdbcTemplate jdbcTemplate) {
+    public PendingOperationRepository(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
         this.jdbcTemplate = jdbcTemplate;
+        this.objectMapper = objectMapper;
     }
 
     public UUID createMovement(String fromAccount, String toAccount, BigDecimal amount, String narration, String idempotencyKey, String actor) {
-        String payload = "{"
-                + "\"fromAccount\":\"" + escape(fromAccount) + "\","
-                + "\"toAccount\":\"" + escape(toAccount) + "\","
-                + "\"amount\":\"" + amount.toPlainString() + "\","
-                + "\"narration\":\"" + escape(narration) + "\","
-                + "\"idempotencyKey\":\"" + escape(idempotencyKey) + "\""
-                + "}";
+        HighRiskMovementPayload payload = new HighRiskMovementPayload(fromAccount, toAccount, amount, narration, idempotencyKey);
         return jdbcTemplate.queryForObject("""
                 INSERT INTO approvals.pending_operations(operation_type, request_payload, requested_by_label)
                 VALUES ('HIGH_RISK_MOVEMENT', ?::jsonb, ?) RETURNING id
-                """, UUID.class, payload, actor);
+                """, UUID.class, writeJson(payload), actor);
     }
 
     public PendingMovement getPendingMovement(UUID id) {
         return jdbcTemplate.queryForObject("""
-                SELECT id, status::text, request_payload, requested_by_label, created_at
+                SELECT id, status::text, request_payload::text, requested_by_label, created_at
                 FROM approvals.pending_operations
                 WHERE id = ? AND operation_type = 'HIGH_RISK_MOVEMENT'
                 """, (rs, rowNum) -> new PendingMovement(
@@ -43,6 +42,15 @@ public class PendingOperationRepository {
                 rs.getString("requested_by_label"),
                 rs.getObject("created_at", OffsetDateTime.class)
         ), id);
+    }
+
+    public HighRiskMovementPayload movementPayload(UUID id) {
+        PendingMovement pending = getPendingMovement(id);
+        try {
+            return objectMapper.readValue(pending.requestPayload(), HighRiskMovementPayload.class);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Stored approval payload is not readable", e);
+        }
     }
 
     @Transactional
@@ -84,7 +92,7 @@ public class PendingOperationRepository {
     public List<PendingMovement> pending(int limit) {
         int safeLimit = Math.max(1, Math.min(limit, 200));
         return jdbcTemplate.query("""
-                SELECT id, status::text, request_payload, requested_by_label, created_at
+                SELECT id, status::text, request_payload::text, requested_by_label, created_at
                 FROM approvals.pending_operations
                 WHERE operation_type = 'HIGH_RISK_MOVEMENT' AND status = 'PENDING_APPROVAL'
                 ORDER BY created_at ASC
@@ -98,8 +106,12 @@ public class PendingOperationRepository {
         ), safeLimit);
     }
 
-    private String escape(String value) {
-        return value == null ? "" : value.replace("\\", "\\\\").replace("\"", "\\\"");
+    private String writeJson(HighRiskMovementPayload payload) {
+        try {
+            return objectMapper.writeValueAsString(payload);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Approval payload could not be serialized", e);
+        }
     }
 
     public record PendingMovement(UUID id, String status, String requestPayload, String requestedByLabel, OffsetDateTime createdAt) {}
