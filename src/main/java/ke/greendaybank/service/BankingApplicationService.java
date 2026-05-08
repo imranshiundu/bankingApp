@@ -5,27 +5,32 @@ import ke.greendaybank.identity.SecureReferenceGenerator;
 import ke.greendaybank.repository.AuditRepository;
 import ke.greendaybank.repository.CustomerRepository;
 import ke.greendaybank.repository.LedgerRepository;
+import ke.greendaybank.repository.StatementRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Map;
 
 @Service
 public class BankingApplicationService {
     private final CustomerRepository customerRepository;
     private final LedgerRepository ledgerRepository;
+    private final StatementRepository statementRepository;
     private final AuditRepository auditRepository;
     private final SecureReferenceGenerator references;
 
     public BankingApplicationService(
             CustomerRepository customerRepository,
             LedgerRepository ledgerRepository,
+            StatementRepository statementRepository,
             AuditRepository auditRepository,
             SecureReferenceGenerator references
     ) {
         this.customerRepository = customerRepository;
         this.ledgerRepository = ledgerRepository;
+        this.statementRepository = statementRepository;
         this.auditRepository = auditRepository;
         this.references = references;
     }
@@ -71,6 +76,10 @@ public class BankingApplicationService {
 
     public BigDecimal balance(String accountNumber) {
         return ledgerRepository.balance(accountNumber);
+    }
+
+    public List<StatementRepository.StatementLine> statement(String accountNumber, int limit) {
+        return statementRepository.latest(accountNumber, limit);
     }
 
     private String cleanIdempotencyKey(String incoming) {
