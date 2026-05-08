@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: greenday-bank-postgres
+    environment:
+      POSTGRES_DB: greenday_bank
+      POSTGRES_USER: greenday
+      POSTGRES_PASSWORD: greenday_dev_only
+    ports:
+      - "5432:5432"
+    volumes:
+      - greenday_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U greenday -d greenday_bank"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  greenday_pgdata:

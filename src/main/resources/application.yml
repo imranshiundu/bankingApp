@@ -1,0 +1,29 @@
+spring:
+  application:
+    name: greenday-banking-core
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/greenday_bank}
+    username: ${DATABASE_USER:greenday}
+    password: ${DATABASE_PASSWORD:greenday_dev_only}
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 2
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+server:
+  port: ${PORT:8080}
+  error:
+    include-stacktrace: never
+    include-message: never
+
+greenday:
+  vault:
+    passphrase: ${GREENDAY_VAULT_PASSPHRASE:change-this-before-real-use}
+    key-reference: ${GREENDAY_VAULT_KEY_REFERENCE:local-dev-key-v1}
+  security:
+    bootstrap-operator: ${GREENDAY_BOOTSTRAP_OPERATOR:system-bootstrap}
