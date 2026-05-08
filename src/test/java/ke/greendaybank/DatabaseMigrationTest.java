@@ -1,11 +1,9 @@
 package ke.greendaybank;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
 
-@SpringBootTest
-class DatabaseMigrationTest {
+class DatabaseMigrationTest extends PostgresIntegrationBase {
     @Test
-    void contextLoads() {
+    void contextLoadsAndAppliesMigrations() {
     }
 }
