@@ -1,12 +1,12 @@
 package ke.greendaybank.service;
 
+import ke.greendaybank.approval.HighRiskMovementPayload;
 import ke.greendaybank.repository.AuditRepository;
 import ke.greendaybank.repository.PendingOperationRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -48,40 +48,17 @@ public class ApprovalExecutionService {
         if (!"APPROVED".equals(pending.status())) {
             throw new IllegalStateException("Operation is not approved");
         }
-        Map<String, String> payload = parseFlatJson(pending.requestPayload());
+        HighRiskMovementPayload payload = pendingOperations.movementPayload(approvalId);
         String transactionRef = banking.move(
-                payload.get("fromAccount"),
-                payload.get("toAccount"),
-                new BigDecimal(payload.get("amount")),
-                payload.get("idempotencyKey") + "_APPROVED",
-                payload.get("narration"),
+                payload.fromAccount(),
+                payload.toAccount(),
+                payload.amount(),
+                payload.idempotencyKey() + "_APPROVED",
+                payload.narration(),
                 executor
         );
         pendingOperations.markExecuted(approvalId, transactionRef);
         audit.record(executor, "HIGH_RISK_MOVEMENT_EXECUTED", "APPROVAL", approvalId.toString(), Map.of("transactionRef", transactionRef));
         return transactionRef;
-    }
-
-    private Map<String, String> parseFlatJson(String json) {
-        Map<String, String> values = new HashMap<>();
-        String clean = json.trim();
-        if (clean.startsWith("{")) clean = clean.substring(1);
-        if (clean.endsWith("}")) clean = clean.substring(0, clean.length() - 1);
-        if (clean.isBlank()) return values;
-        for (String pair : clean.split(",")) {
-            String[] parts = pair.split(":", 2);
-            if (parts.length == 2) {
-                values.put(unquote(parts[0]), unquote(parts[1]));
-            }
-        }
-        return values;
-    }
-
-    private String unquote(String value) {
-        String v = value.trim();
-        if (v.startsWith("\"") && v.endsWith("\"")) {
-            v = v.substring(1, v.length() - 1);
-        }
-        return v.replace("\\\"", "\"").replace("\\\\", "\\");
     }
 }
