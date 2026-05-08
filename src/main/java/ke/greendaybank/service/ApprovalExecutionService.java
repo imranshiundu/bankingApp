@@ -49,7 +49,7 @@ public class ApprovalExecutionService {
             throw new IllegalStateException("Operation is not approved");
         }
         HighRiskMovementPayload payload = pendingOperations.movementPayload(approvalId);
-        String transactionRef = banking.move(
+        String transactionRef = banking.postApprovedMovement(
                 payload.fromAccount(),
                 payload.toAccount(),
                 payload.amount(),
