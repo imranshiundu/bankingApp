@@ -26,13 +26,17 @@ class BankingFlowIntegrationTest extends PostgresIntegrationBase {
 
         assertNotNull(creditRef);
         assertNotNull(moveRef);
-        assertEquals(new BigDecimal("1750.00"), banking.balance(source.accountNumber()));
-        assertEquals(new BigDecimal("750.00"), banking.balance(destination.accountNumber()));
+        assertMoney("1750.00", banking.balance(source.accountNumber()));
+        assertMoney("750.00", banking.balance(destination.accountNumber()));
 
         List<StatementRepository.StatementLine> sourceLines = banking.statement(source.accountNumber(), 10);
         assertEquals(2, sourceLines.size());
         assertTrue(sourceLines.stream().anyMatch(line -> line.transactionRef().equals(creditRef)));
         assertTrue(sourceLines.stream().anyMatch(line -> line.transactionRef().equals(moveRef)));
+    }
+
+    private void assertMoney(String expected, BigDecimal actual) {
+        assertEquals(0, new BigDecimal(expected).compareTo(actual));
     }
 
     private Map<String, String> profile(String name, String ref) {
