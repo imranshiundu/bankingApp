@@ -1,5 +1,6 @@
 package ke.greendaybank.service;
 
+import ke.greendaybank.approval.ApprovalPolicy;
 import ke.greendaybank.customer.CustomerProfile;
 import ke.greendaybank.identity.SecureReferenceGenerator;
 import ke.greendaybank.repository.AuditRepository;
@@ -20,19 +21,22 @@ public class BankingApplicationService {
     private final StatementRepository statementRepository;
     private final AuditRepository auditRepository;
     private final SecureReferenceGenerator references;
+    private final ApprovalPolicy approvalPolicy;
 
     public BankingApplicationService(
             CustomerRepository customerRepository,
             LedgerRepository ledgerRepository,
             StatementRepository statementRepository,
             AuditRepository auditRepository,
-            SecureReferenceGenerator references
+            SecureReferenceGenerator references,
+            ApprovalPolicy approvalPolicy
     ) {
         this.customerRepository = customerRepository;
         this.ledgerRepository = ledgerRepository;
         this.statementRepository = statementRepository;
         this.auditRepository = auditRepository;
         this.references = references;
+        this.approvalPolicy = approvalPolicy;
     }
 
     @Transactional
@@ -64,6 +68,14 @@ public class BankingApplicationService {
 
     @Transactional
     public String move(String fromAccountNumber, String toAccountNumber, BigDecimal amount, String idempotencyKey, String narration, String actor) {
+        if (approvalPolicy.movementRequiresApproval(amount)) {
+            throw new IllegalStateException("High-risk movement requires approval workflow");
+        }
+        return postApprovedMovement(fromAccountNumber, toAccountNumber, amount, idempotencyKey, narration, actor);
+    }
+
+    @Transactional
+    public String postApprovedMovement(String fromAccountNumber, String toAccountNumber, BigDecimal amount, String idempotencyKey, String narration, String actor) {
         String key = cleanIdempotencyKey(idempotencyKey);
         String transactionRef = ledgerRepository.postMovement(fromAccountNumber, toAccountNumber, amount, key, narration);
         auditRepository.record(actor, "ACCOUNT_MOVEMENT_POSTED", "ACCOUNT", fromAccountNumber, Map.of(
