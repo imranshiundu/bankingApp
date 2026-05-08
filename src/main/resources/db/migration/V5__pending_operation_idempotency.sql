@@ -2,6 +2,9 @@ ALTER TABLE approvals.pending_operations
 ADD COLUMN idempotency_key TEXT;
 
 ALTER TABLE approvals.pending_operations
+ADD COLUMN updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+
+ALTER TABLE approvals.pending_operations
 ADD CONSTRAINT uq_pending_operations_operation_idempotency
 UNIQUE (operation_type, idempotency_key);
 
