@@ -22,12 +22,16 @@ public class PendingOperationRepository {
         this.objectMapper = objectMapper;
     }
 
+    @Transactional
     public UUID createMovement(String fromAccount, String toAccount, BigDecimal amount, String narration, String idempotencyKey, String actor) {
         HighRiskMovementPayload payload = new HighRiskMovementPayload(fromAccount, toAccount, amount, narration, idempotencyKey);
         return jdbcTemplate.queryForObject("""
-                INSERT INTO approvals.pending_operations(operation_type, request_payload, requested_by_label)
-                VALUES ('HIGH_RISK_MOVEMENT', ?::jsonb, ?) RETURNING id
-                """, UUID.class, writeJson(payload), actor);
+                INSERT INTO approvals.pending_operations(operation_type, request_payload, requested_by_label, idempotency_key)
+                VALUES ('HIGH_RISK_MOVEMENT', ?::jsonb, ?, ?)
+                ON CONFLICT (operation_type, idempotency_key)
+                DO UPDATE SET updated_at = approvals.pending_operations.created_at
+                RETURNING id
+                """, UUID.class, writeJson(payload), actor, idempotencyKey);
     }
 
     public PendingMovement getPendingMovement(UUID id) {
